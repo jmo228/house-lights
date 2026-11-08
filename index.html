@@ -4,7 +4,10 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'; img-src data: blob:; connect-src wss://house-lights.house-lights-server.workers.dev ws://127.0.0.1:8787 ws://localhost:8787; base-uri 'none'; form-action 'none'">
+<meta name="referrer" content="no-referrer">
 <title>House Lights Live</title>
+<script>if(window.top!==window.self){try{window.top.location=window.self.location}catch(e){document.documentElement.style.display="none"}}</script>
 <style>
 :root{--text-primary:#1d1d1b;--text-secondary:#5f5e5a;--surface-1:#f1efe8;--border-strong:rgba(0,0,0,.25);--bg-accent:#e6f1fb;--text-accent:#185fa5;--border-accent:#85b7eb;--hold:#fff3d6;--hold-text:#854f0b;--font-mono:Consolas,monospace;--page:#ffffff}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--text-primary:#eceae4;--text-secondary:#b4b2a9;--surface-1:#2c2c2a;--border-strong:rgba(255,255,255,.3);--bg-accent:#0c447c;--text-accent:#b5d4f4;--border-accent:#378add;--hold:#633806;--hold-text:#fac775;--page:#1d1d1b}}
@@ -475,8 +478,9 @@ hview.onchange=sizeHouse;choosePhoto("night_a");sizeHouse();
 const PROD_SERVER="wss://house-lights.house-lights-server.workers.dev/ws";
 const ALLOWED_PADS=new Set(["A4","A6","A7","B1","B2","B3","B4","B5","B6","B7","B8"]),ALLOWED_KNOBS=new Set([2,3,6,7]);
 const NET=(()=>{
- const qs=new URLSearchParams(location.search),h=location.hostname;
- const url=qs.get("server")||(h=="localhost"||h=="127.0.0.1"?"ws://127.0.0.1:8787/ws":PROD_SERVER);
+ // the live page only ever talks to our server; ?server= is a testing aid honoured on localhost only
+ const qs=new URLSearchParams(location.search),h=location.hostname,local=h=="localhost"||h=="127.0.0.1";
+ const url=local?(qs.get("server")||"ws://127.0.0.1:8787/ws"):PROD_SERVER;
  let token=null;try{token=localStorage.getItem("hl-token")}catch(e){}
  if(!token||!/^[A-Za-z0-9-]{8,64}$/.test(token)){token=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36));try{localStorage.setItem("hl-token",token)}catch(e){}}
  const N={ws:null,connected:false,live:false,me:null,q:null,s:null,sAt:0,myTurn:false,wasTurn:false,replaced:false,retry:1000,knobT:0,knobPending:null,
@@ -532,8 +536,9 @@ function knobPos(i){const pf=f=>f==1?64:Math.round(64+Math.sign(Math.log(f))*(3+
  return [st.porchB*1.27,(st.porchStrobeHz-2)/18*127,st.porchSweep?64+st.porchSweep/180*63:64,pf(st.porchFx),st.winB*1.27,(st.strobeHz-2)/18*127,
   st.sweep?64+st.sweep/180*63:64,Math.max(0,WIN_FX_SPEEDS.indexOf(st.winFx))/4*127,st.gm*1.27][i]}
 const qovEl=document.getElementById("qov"),tbEl=document.getElementById("turnbar"),tmEl=document.getElementById("turnmsg"),joinBtn=document.getElementById("joinbtn");
-const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
-const mmss=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+const esc=s=>String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const num=x=>{const n=Math.floor(Number(x));return Number.isFinite(n)&&n>0?Math.min(n,1e6):0};   // server numbers: only ever shown as numbers
+const mmss=s=>{s=num(s);return `${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`};
 let wakeLock=null;
 async function keepAwake(){try{if(navigator.wakeLock&&!wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>wakeLock=null)}}catch(e){}}
 document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="visible"&&NET.q&&NET.me&&(NET.myTurn||NET.q.list.some(p=>p.id==NET.me.id)))keepAwake()});
@@ -547,10 +552,10 @@ function liveUI(){NET.update();const q=NET.q,me=NET.me,live=NET.live;
  if(NET.replaced)h=`<span class="off">PAUSED</span>Opened in another tab`;
  else if(!NET.connected)h=`<span class="off">DEMO</span>Connecting to the lights…`;
  else if(!live)h=`<span class="off">DEMO</span>Lights are offline right now`;
- else{const rows=[`<span class="live">LIVE</span>${q.viewers} watching`];
+ else{const rows=[`<span class="live">LIVE</span>${num(q.viewers)} watching`];
   rows.push(q.driver?`Now: <b class="${me&&q.driver.id==me.id?"me":""}">${esc(q.driver.name)}</b> · ${mmss(q.driver.left)}`:"Nobody driving - join!");
   q.list.slice(0,6).forEach((p,i)=>rows.push(`${i+1}. <span class="${me&&p.id==me.id?"me":""}">${esc(p.name)}${me&&p.id==me.id?" (you)":""}</span>`));
-  if(q.total>6)rows.push(`+${q.total-6} more`);
+  if(num(q.total)>6)rows.push(`+${num(q.total)-6} more`);
   h=rows.join("<br>")}
  if(qovEl._h!==h){qovEl.innerHTML=h;qovEl._h=h}
  // turn bar
@@ -559,8 +564,8 @@ function liveUI(){NET.update();const q=NET.q,me=NET.me,live=NET.live;
  else if(!live)msg=NET.connected?"The lights are offline - enjoy the demo, and check back during show hours.":"Connecting to the lights…";
  else{const pos=me?q.list.findIndex(p=>p.id==me.id):-1,name=me?esc(me.name):"";
   if(NET.myTurn){mine=true;msg=`<b>Your turn, ${name}!</b> ${mmss(q.driver.left)} left - try the pads`;btn="End turn"}
-  else if(pos>=0){const wait=(q.driver?q.driver.left:0)+pos*q.turn;msg=`You're <b>#${pos+1}</b> in line, ${name} · about ${mmss(wait)} - keep this page open`;btn="Leave line"}
-  else{msg=`You're <b>${name||"…"}</b>. ${q.total?q.total+" waiting":"No line"} - each turn is ${q.turn} seconds.`;btn="Join the line"}}
+  else if(pos>=0){const wait=(q.driver?num(q.driver.left):0)+pos*num(q.turn);msg=`You're <b>#${pos+1}</b> in line, ${name} · about ${mmss(wait)} - keep this page open`;btn="Leave line"}
+  else{msg=`You're <b>${name||"…"}</b>. ${num(q.total)?num(q.total)+" waiting":"No line"} - each turn is ${num(q.turn)} seconds.`;btn="Join the line"}}
  if(tmEl._h!==msg){tmEl.innerHTML=msg;tmEl._h=msg}
  joinBtn.style.display=btn?"":"none";if(btn&&joinBtn.textContent!==btn)joinBtn.textContent=btn;
  tbEl.classList.toggle("mine",mine);
