@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="robots" content="noindex, nofollow">
-<title>WLED Show v1.0</title>
+<title>House Lights Live</title>
 <style>
 :root{--text-primary:#1d1d1b;--text-secondary:#5f5e5a;--surface-1:#f1efe8;--border-strong:rgba(0,0,0,.25);--bg-accent:#e6f1fb;--text-accent:#185fa5;--border-accent:#85b7eb;--hold:#fff3d6;--hold-text:#854f0b;--font-mono:Consolas,monospace;--page:#ffffff}
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){--text-primary:#eceae4;--text-secondary:#b4b2a9;--surface-1:#2c2c2a;--border-strong:rgba(255,255,255,.3);--bg-accent:#0c447c;--text-accent:#b5d4f4;--border-accent:#378add;--hold:#633806;--hold-text:#fac775;--page:#1d1d1b}}
@@ -34,7 +34,20 @@ canvas{width:100%;border-radius:12px;display:block}
 .dots i.b{background:#e24b4a}
 button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touch-action:manipulation;-webkit-tap-highlight-color:transparent}
 .pads button{touch-action:none}
-.stage{background:var(--page)}
+.stage{background:var(--page);position:relative}
+.qov{position:absolute;left:8px;top:8px;max-width:48%;background:rgba(10,12,20,.66);color:#eceae4;border-radius:10px;padding:6px 9px;font-size:12px;line-height:1.45;pointer-events:none}
+.qov b{font-weight:500}
+.qov .me{color:#fac775}
+.qov .live{display:inline-block;background:#e24b4a;color:#fff;border-radius:4px;padding:0 5px;font-size:10px;margin-right:4px}
+.qov .off{display:inline-block;background:#5f5e5a;color:#fff;border-radius:4px;padding:0 5px;font-size:10px;margin-right:4px}
+.turnbar{display:flex;flex-wrap:wrap;gap:8px;align-items:center;margin-top:8px;font-size:14px}
+.turnbar .msg{flex:1;min-width:150px}
+.turnbar button.big{font-size:15px;padding:8px 16px;font-weight:500;background:var(--bg-accent);color:var(--text-accent);border-color:var(--border-accent)}
+.turnbar.mine{background:var(--hold);color:var(--hold-text);border-radius:10px;padding:6px 10px}
+@keyframes yourturn{0%,100%{transform:scale(1)}50%{transform:scale(1.03)}}
+.turnbar.flash{animation:yourturn .5s ease-in-out 4}
+.locked{opacity:.55}
+.pads button.na{opacity:.35}
 @media (max-width:560px){
  body{padding:10px 10px calc(10px + env(safe-area-inset-bottom))}
  h1{font-size:18px}
@@ -48,8 +61,8 @@ button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touc
 </style>
 </head>
 <body>
-<h1>WLED show v1.0, simulated</h1>
-<p class="note">Same effects engine as the v1.0 controller, run in the browser with simulated music. Nothing is sent to the lights.</p>
+<h1>House lights, live</h1>
+<p class="note">Join the line for a 1-minute turn on the real lights. While the lights are offline this page plays a demo.</p>
 
 <div class="row">
   <span class="lbl">Scenes</span>
@@ -70,7 +83,9 @@ button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touc
     <label class="lbl" style="cursor:pointer"><input type="file" id="photofile" accept="image/*" style="display:none"><u>Use another photo</u></label>
   </span>
 </div>
-<div class="stage"><canvas id="house" width="680" height="400"></canvas></div>
+<div class="stage"><canvas id="house" width="680" height="400"></canvas><div class="qov" id="qov">Connecting…</div>
+  <div class="turnbar" id="turnbar"><span class="msg" id="turnmsg">Connecting to the lights…</span><button class="big" id="joinbtn" style="display:none">Join the line</button></div>
+</div>
 <p class="note" id="adjusthelp" style="display:none;margin-top:6px">Drag the white dots onto each window's LED outline, the porch ceiling's 4 corners, the lit porch opening, and the top and bottom of each tree's wrapped trunk. Each photo keeps its own positions, saved in this browser.</p>
 
 <div class="row" style="margin-top:10px">
@@ -82,12 +97,13 @@ button{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none;touc
   <span class="stat" id="meters"></span>
 </div>
 
-<div class="card" style="margin-top:0">
+<div class="card" id="padcard">
   <h3>MPK pads</h3>
+  <p class="note" id="padnote" style="display:none;margin:-4px 0 6px">Strobe pads and TAP stay with the house. Hold pads work while you hold them.</p>
   <div class="pads" id="pads"></div>
 </div>
 
-<div class="card">
+<div class="card" id="knobcard">
   <h3>Knobs</h3>
   <div class="knobs" id="knobs"></div>
   <div class="row" style="margin:10px 0 0">
@@ -197,7 +213,7 @@ function beatFx(){const beat=clock.beat*st.winFx,rev=toggles.reverse,frac=beat%1
 function render(){
  SEGS.forEach(s=>{s.rgb=rot(s.cfg.color,st.sweep);s.bg=rot(s.cfg.bg,st.sweep)});
  out.fill(0);
- for(const s of SEGS){if(s.cfg.fx=="mirror")continue;const f=FX[s.cfg.fx](s.stop-s.start,s);for(let i=0;i<f.length;i++){const j=(s.start+i)*3;out[j]=f[i][0];out[j+1]=f[i][1];out[j+2]=f[i][2]}}
+ for(const s of SEGS){if(s.cfg.fx=="mirror")continue;const f=(FX[s.cfg.fx]||FX.off)(s.stop-s.start,s);for(let i=0;i<f.length;i++){const j=(s.start+i)*3;out[j]=f[i][0];out[j+1]=f[i][1];out[j+2]=f[i][2]}}
  for(const s of SEGS){if(s.cfg.fx!="mirror")continue;const base=s.win*300;for(let i=0;i<90;i++){const src=(base+142-i)*3,j=(s.start+i)*3;out[j]=out[src];out[j+1]=out[src+1];out[j+2]=out[src+2]}}
  const running=isOn("chase")||toggles.rise||toggles.sweep,inten=running?beatFx():null;
  for(let j=0;j<TOTAL;j++){const k=LSEG[j];if(k<0)continue;const c=SEGS[k].rgb,o=j*3;
@@ -213,7 +229,7 @@ function render(){
  // porch
  PSEGS.forEach(s=>{s.rgb=rot(s.cfg.color,st.porchSweep);s.bg=rot(s.cfg.bg,st.porchSweep)});
  pout.fill(0);
- for(const s of PSEGS){if(s.cfg.fx=="mirror")continue;const f=FX[s.cfg.fx](s.stop-s.start,s);for(let i=0;i<f.length;i++){const j=(s.start+i)*3;pout[j]=f[i][0];pout[j+1]=f[i][1];pout[j+2]=f[i][2]}}
+ for(const s of PSEGS){if(s.cfg.fx=="mirror")continue;const f=(FX[s.cfg.fx]||FX.off)(s.stop-s.start,s);for(let i=0;i<f.length;i++){const j=(s.start+i)*3;pout[j]=f[i][0];pout[j+1]=f[i][1];pout[j+2]=f[i][2]}}
  const W=PSEGS[1],E=PSEGS[3];if(E.cfg.fx=="mirror")for(let i=0;i<E.stop-E.start;i++){const src=(W.stop-1-i)*3,j=(E.start+i)*3;pout[j]=pout[src];pout[j+1]=pout[src+1];pout[j+2]=pout[src+2]}
  for(let j=5;j<450;j++){pglit[j]*=GLIT_DECAY}
  if(holds.porch_glitter.size)for(let k=0;k<445*GLIT_D;k++)pglit[5+(Math.random()*445|0)]=1;
@@ -288,11 +304,14 @@ function loadScene(n){const sc=SCENES[n];st.scene=n;st.strobeHz=sc.strobe;st.ban
  st.trees=st.trees.map((_,i)=>sc.trees[i%sc.trees.length]);
  SEGS.forEach(s=>{s.cfg.fx=s.side=="Right"?"mirror":sc.fx[s.side];s.cfg.bg=[0,0,0]});applyPal(sc.pal,sc.lay);syncKnobs()}
 const scBox=document.getElementById("scenes");
-Object.entries(SCENES).forEach(([n,sc])=>{const b=document.createElement("button");b.textContent=`${n} ${sc.name}`;b.dataset.n=n;b.style.marginRight="4px";b.onclick=()=>loadScene(+n);scBox.appendChild(b)});
-const go=()=>loadScene((st.scene||0)%4+1);document.getElementById("go").onclick=go;
+Object.entries(SCENES).forEach(([n,sc])=>{const b=document.createElement("button");b.textContent=`${n} ${sc.name}`;b.dataset.n=n;b.style.marginRight="4px";b.onclick=()=>{if(NET.live){if(NET.myTurn)NET.send({t:"act",k:"scene",n:+n})}else loadScene(+n)};scBox.appendChild(b)});
+const go=()=>loadScene((st.scene||0)%4+1);
+document.getElementById("go").onclick=()=>{if(NET.live){if(NET.myTurn){NET.send({t:"act",k:"pad",p:"B8",d:true});NET.send({t:"act",k:"pad",p:"B8",d:false})}}else go()};
 const palSel=document.getElementById("pal"),laySel=document.getElementById("lay"),ppalSel=document.getElementById("ppal");
 Object.keys(PALETTES).forEach(k=>{palSel.add(new Option(k,k));ppalSel.add(new Option(k,k))});
-palSel.onchange=()=>applyPal(palSel.value,laySel.value);laySel.onchange=()=>applyPal(palSel.value,laySel.value);ppalSel.onchange=()=>applyPorchPal(ppalSel.value);
+// palettes are the house's choice while live (shown, not changeable)
+palSel.onchange=()=>{if(NET.live)return syncTop();applyPal(palSel.value,laySel.value)};laySel.onchange=()=>{if(NET.live)return syncTop();applyPal(palSel.value,laySel.value)};
+ppalSel.onchange=()=>{if(NET.live)return syncTop();applyPorchPal(ppalSel.value)};
 function syncTop(){palSel.value=st.pal;laySel.value=st.lay;ppalSel.value=st.porchPal;scBox.querySelectorAll("button").forEach(b=>b.classList.toggle("on",+b.dataset.n==st.scene))}
 
 // ===== knobs (MIDI 0-127, same curves as midi.py) =====
@@ -311,7 +330,9 @@ const KN=[
  ["Grand master",v=>st.gm=Math.round(v/127*100),()=>st.gm+"%",()=>127]];
 const kBox=document.getElementById("knobs"),kEls=[];
 KN.forEach(([l,set,show,init],i)=>{const d=document.createElement("div");d.className="k";d.innerHTML=`<span>${l}</span><input type="range" min="0" max="127" step="1" value="${init()}"><span></span>`;
- const r=d.querySelector("input"),o=d.querySelector("span:last-child");r.oninput=()=>{set(+r.value);o.textContent=show()};set(+r.value);o.textContent=show();kBox.appendChild(d);kEls.push([r,o,set,show,init])});
+ const r=d.querySelector("input"),o=d.querySelector("span:last-child");
+ r.addEventListener("pointerdown",()=>r.dataset.drag="1");["pointerup","pointercancel","change"].forEach(ev=>r.addEventListener(ev,()=>delete r.dataset.drag));
+ r.oninput=()=>{if(NET.live){if(NET.myTurn&&ALLOWED_KNOBS.has(i))NET.knob(i,+r.value);return}set(+r.value);o.textContent=show()};set(+r.value);o.textContent=show();kBox.appendChild(d);kEls.push([r,o,set,show,init])});
 function syncKnobs(){kEls.forEach(([r,o,set,show,init],i)=>{if(i==5){r.value=init();o.textContent=show()}})}
 
 // ===== pads =====
@@ -323,11 +344,14 @@ const PADS={A:[["Strobe W2+3","hold",d=>d?strobeSrc.A1=winSegs([1,2]):delete str
  ["Reverse","toggle","reverse"],["Rainbow","toggle","rainbow"],["Glitter","hold",d=>holds.glitter[d?"add":"delete"]("B7")],["GO","trigger",()=>go()]]};
 const padBox=document.getElementById("pads"),toggleBtns=[];
 ["A","B"].forEach(bank=>{const h=document.createElement("div");h.className="bank";h.textContent="Bank "+bank+(bank=="A"?" · hold, toggle or tap":"");padBox.appendChild(h);
- PADS[bank].forEach(([label,kind,act])=>{const b=document.createElement("button");b.textContent=label;padBox.appendChild(b);
-  if(kind=="hold"){const dn=e=>{e.preventDefault();b.classList.add("held");act(true)},up=()=>{if(b.classList.contains("held")){b.classList.remove("held");act(false)}};
+ PADS[bank].forEach(([label,kind,act],i)=>{const b=document.createElement("button"),id=bank+(i+1);b.textContent=label;b.dataset.pad=id;padBox.appendChild(b);
+  // live (real lights): presses go to the queue server, only on your turn and only for allowed pads
+  const remoteOK=()=>NET.live&&NET.myTurn&&ALLOWED_PADS.has(id);
+  if(kind=="hold"){const dn=e=>{e.preventDefault();if(NET.live){if(!remoteOK())return;b.classList.add("held");NET.send({t:"act",k:"pad",p:id,d:true});return}b.classList.add("held");act(true)},
+   up=()=>{if(!b.classList.contains("held"))return;b.classList.remove("held");if(NET.live)NET.send({t:"act",k:"pad",p:id,d:false});else act(false)};
    b.addEventListener("pointerdown",dn);b.addEventListener("pointerup",up);b.addEventListener("pointerleave",up);b.addEventListener("pointercancel",up)}
-  else if(kind=="toggle"){b.onclick=()=>{toggles[act]=!toggles[act]};toggleBtns.push([b,act])}
-  else b.onclick=act})});
+  else{b.onclick=()=>{if(NET.live){if(remoteOK()){NET.send({t:"act",k:"pad",p:id,d:true});NET.send({t:"act",k:"pad",p:id,d:false})}return}
+   if(kind=="toggle")toggles[act]=!toggles[act];else act()};if(kind=="toggle")toggleBtns.push([b,act])}})});
 
 // ===== tempo =====
 function tap(){const t=simT;if(clock.taps.length&&t-clock.taps.at(-1)>2)clock.taps=[];
@@ -335,13 +359,13 @@ function tap(){const t=simT;if(clock.taps.length&&t-clock.taps.at(-1)>2)clock.ta
  if(!clock.taps.length)clock.count=0;clock.taps.push(t);clock.taps=clock.taps.slice(-9);
  if(clock.taps.length>=2){const avg=(clock.taps.at(-1)-clock.taps[0])/(clock.taps.length-1);clock.bpm=Math.round(Math.min(300,Math.max(30,60/avg))*10)/10}
  clock.beat=clock.count;clock.count++;lastBeat=Math.floor(clock.beat)-1}
-document.getElementById("tap").onclick=tap;
+document.getElementById("tap").onclick=()=>{if(!NET.live)tap()};
 const energy=document.getElementById("energy"),pdist=document.getElementById("pdist");
 pdist.oninput=()=>document.getElementById("pdistv").textContent=pdist.value+" ft";
 document.getElementById("music").onclick=e=>{music=!music;e.currentTarget.classList.toggle("on",music);e.currentTarget.textContent=music?"Music on":"Music off"};
-const boBtn=document.getElementById("bo");boBtn.onclick=()=>{st.blackout=!st.blackout};
-document.getElementById("rel").onclick=()=>{Object.keys(strobeSrc).forEach(k=>delete strobeSrc[k]);Object.values(holds).forEach(s=>s.clear());Object.keys(toggles).forEach(k=>toggles[k]=false);padBox.querySelectorAll(".held").forEach(b=>b.classList.remove("held"))};
-document.addEventListener("keydown",e=>{if(e.target.tagName=="INPUT"||e.target.tagName=="SELECT")return;
+const boBtn=document.getElementById("bo");boBtn.onclick=()=>{if(!NET.live)st.blackout=!st.blackout};
+document.getElementById("rel").onclick=()=>{if(NET.live)return;Object.keys(strobeSrc).forEach(k=>delete strobeSrc[k]);Object.values(holds).forEach(s=>s.clear());Object.keys(toggles).forEach(k=>toggles[k]=false);padBox.querySelectorAll(".held").forEach(b=>b.classList.remove("held"))};
+document.addEventListener("keydown",e=>{if(e.target.tagName=="INPUT"||e.target.tagName=="SELECT"||NET.live)return;
  const m={c:1,d:2,e:3,f:4}[e.key.toLowerCase()];if(m)loadScene(m);else if(e.key==" "){e.preventDefault();tap()}else if(e.key.toLowerCase()=="b")st.blackout=!st.blackout;else if(e.key=="Escape")document.getElementById("rel").click()});
 
 // ===== photo overlay =====
@@ -422,7 +446,7 @@ function drawPhoto(){const c=H,W=houseCv.width,Hh=houseCv.height,S=p=>[p[0]*W,p[
   cal.trees.forEach((t,i)=>{const a=S(t.a),b=S(t.b);c.strokeStyle=t.on?"rgba(255,255,255,.6)":"rgba(255,255,255,.3)";c.beginPath();c.moveTo(...a);c.lineTo(...b);c.stroke();
    c.fillStyle="#fff";[a,b].forEach(p=>{c.beginPath();c.arc(p[0],p[1],4.5,0,7);c.fill()});c.fillText(t.on?"Tree "+(i+1):"T"+(i+1),a[0],a[1]-8)});
   if(cal.trees.some(t=>!t.on)){c.textAlign="left";c.fillStyle="#fac775";c.fillText("Trees not in this photo: drag T# onto a trunk",8,Hh*.84)}}
- c.fillStyle="#b4b2a9";c.font="11px sans-serif";c.textAlign="left";c.fillText(info.label?`Photo: ${info.label}`:"Your photo",10,16)}
+ c.fillStyle="#b4b2a9";c.font="11px sans-serif";c.textAlign="right";c.fillText(info.label?`Photo: ${info.label}`:"Your photo",W-10,Hh-10)}
 function handles(){const h=[];cal.win.forEach(q=>q.forEach(p=>h.push([p,null])));cal.porch.forEach(p=>h.push([p,null]));cal.opening.forEach(p=>h.push([p,null]));
  cal.trees.forEach(t=>{h.push([t.a,t]);h.push([t.b,t])});return h}
 function evPos(e){const r=houseCv.getBoundingClientRect();return[(e.clientX-r.left)/r.width,(e.clientY-r.top)/r.height]}
@@ -444,6 +468,112 @@ Object.entries(PHOTOS).forEach(([id,p])=>psel.add(new Option(p.label,id)));
 psel.onchange=()=>choosePhoto(psel.value);
 hview.onchange=sizeHouse;choosePhoto("night_a");sizeHouse();
 
+// ===== live link to the real lights (v2.0) =====
+// The queue server gives this phone a name, keeps the line, and passes on the house's live state.
+// While connected and the house is online ("live"), the picture shows the real show and the controls
+// only work on your turn. Otherwise the page runs its own demo exactly as before.
+const PROD_SERVER="wss://house-lights.house-lights-server.workers.dev/ws";
+const ALLOWED_PADS=new Set(["A4","A6","A7","B1","B2","B3","B4","B5","B6","B7","B8"]),ALLOWED_KNOBS=new Set([2,3,6,7]);
+const NET=(()=>{
+ const qs=new URLSearchParams(location.search),h=location.hostname;
+ const url=qs.get("server")||(h=="localhost"||h=="127.0.0.1"?"ws://127.0.0.1:8787/ws":PROD_SERVER);
+ let token=null;try{token=localStorage.getItem("hl-token")}catch(e){}
+ if(!token||!/^[A-Za-z0-9-]{8,64}$/.test(token)){token=(crypto.randomUUID?crypto.randomUUID():Math.random().toString(36).slice(2)+Date.now().toString(36));try{localStorage.setItem("hl-token",token)}catch(e){}}
+ const N={ws:null,connected:false,live:false,me:null,q:null,s:null,sAt:0,myTurn:false,wasTurn:false,replaced:false,retry:1000,knobT:0,knobPending:null,
+  send(m){if(N.ws&&N.ws.readyState==1)try{N.ws.send(JSON.stringify(m))}catch(e){}},
+  knob(i,v){N.knobPending={i,v};const now=performance.now();if(now-N.knobT>80){N.knobT=now;N.send({t:"act",k:"knob",...N.knobPending});N.knobPending=null}}};
+ function connect(){if(N.replaced||url.includes("REPLACE_ME"))return;
+  let ws;try{ws=new WebSocket(url)}catch(e){return later()}
+  N.ws=ws;
+  ws.onopen=()=>{N.connected=true;N.retry=1000;N.send({t:"hello",token})};
+  ws.onmessage=e=>{let m;try{m=JSON.parse(e.data)}catch(x){return}
+   if(m.t=="s"){N.s=m;N.sAt=performance.now()}
+   else if(m.t=="q"){N.q=m}
+   else if(m.t=="c"){applyCfg(m)}
+   else if(m.t=="you"){N.me={id:m.id,name:m.name}}
+   else if(m.t=="turn"){const tb=document.getElementById("turnbar");tb.classList.remove("flash");void tb.offsetWidth;tb.classList.add("flash");try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(x){}}
+   else if(m.t=="turnover"){releaseHeld()}
+   else if(m.t=="replaced"){N.replaced=true;try{ws.close()}catch(x){}}
+   update()};
+  ws.onclose=()=>{N.connected=false;if(N.ws===ws)N.ws=null;update();later()};
+  ws.onerror=()=>{}}
+ function later(){if(N.replaced)return;setTimeout(()=>{if(!N.ws)connect()},N.retry);N.retry=Math.min(N.retry*2,15000)}
+ function update(){const q=N.q,me=N.me;
+  N.live=N.connected&&!!q&&q.live&&!!N.s&&performance.now()-N.sAt<4000;
+  N.myTurn=N.live&&!!(q&&q.driver&&me&&q.driver.id==me.id);
+  if(N.wasTurn&&!N.myTurn)releaseHeld();N.wasTurn=N.myTurn}
+ N.update=update;
+ setInterval(()=>{N.send({t:"ping"});if(N.knobPending){N.send({t:"act",k:"knob",...N.knobPending});N.knobPending=null}},15000);
+ setInterval(()=>{if(N.knobPending){N.knobT=performance.now();N.send({t:"act",k:"knob",...N.knobPending});N.knobPending=null}},100);
+ document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="visible"&&!N.connected&&!N.ws){N.retry=1000;connect()}});
+ window.addEventListener("pageshow",()=>{if(!N.connected&&!N.ws)connect()});
+ setTimeout(connect,0);
+ return N})();
+function releaseHeld(){padBox.querySelectorAll(".held").forEach(b=>{b.classList.remove("held");NET.send({t:"act",k:"pad",p:b.dataset.pad,d:false})})}
+function applyCfg(c){
+ SEGS.forEach(s=>{const x=c.segs&&c.segs[s.name];if(x){s.cfg.fx=x.fx;s.cfg.color=x.color;s.cfg.bg=x.bg||[0,0,0]}});
+ PSEGS.forEach(s=>{const x=c.psegs&&c.psegs[s.name];if(x){s.cfg.fx=x.fx;s.cfg.color=x.color;s.cfg.bg=x.bg||[0,0,0]}});
+ if(Array.isArray(c.wb)&&c.wb.length==4)st.bands=c.wb.map(b=>({Bottom:b.Bottom,Sides:b.Sides,Top:b.Top}));
+ if(c.pbd)Object.assign(PBANDS,c.pbd);
+ if(c.pal&&PALETTES[c.pal]){st.pal=c.pal;st.lay=c.lay||st.lay}if(c.ppal&&PALETTES[c.ppal])st.porchPal=c.ppal;syncTop()}
+// copy the house's live state into the engine (called every frame while live)
+function applyLive(){const s=NET.s;if(!s)return;const age=(performance.now()-NET.sAt)/1000;
+ audio.bass=s.a[0];audio.mid=s.a[1];audio.high=s.a[2];audio.beat_time=simT-s.ba-age;
+ clock.bpm=s.bpm;const target=s.beat+age*s.bpm/60,d=target-clock.beat;if(Math.abs(d)>.25)clock.beat=target;else clock.beat+=d*.15;
+ Object.assign(toggles,s.tg);
+ for(const k in holds){holds[k].clear();if(s.h&&s.h[k])holds[k].add("net")}
+ for(const k in strobeSrc)delete strobeSrc[k];if(s.sg&&s.sg.length)strobeSrc.net=s.sg;
+ st.blackout=!!s.bo;const k=s.k||{};
+ st.sweep=k.sw??0;st.porchSweep=k.psw??0;st.winFx=k.wfx??1;st.porchFx=k.pfx??1;st.gm=k.gm??100;st.winB=k.wb??100;st.porchB=k.pb??100;
+ st.strobeHz=k.shz??10;st.porchStrobeHz=k.pshz??10;st.scene=s.sc}
+function liveTrees(){const s=NET.s;if(s&&s.bt)for(let i=0;i<6;i++)treeLvl[i+6]=s.bt[i]??10}
+// knob slider positions from the live values (inverse of the knob curves)
+function knobPos(i){const pf=f=>f==1?64:Math.round(64+Math.sign(Math.log(f))*(3+Math.min(1,Math.abs(Math.log(f)/Math.log(4)))*60));
+ return [st.porchB*1.27,(st.porchStrobeHz-2)/18*127,st.porchSweep?64+st.porchSweep/180*63:64,pf(st.porchFx),st.winB*1.27,(st.strobeHz-2)/18*127,
+  st.sweep?64+st.sweep/180*63:64,Math.max(0,WIN_FX_SPEEDS.indexOf(st.winFx))/4*127,st.gm*1.27][i]}
+const qovEl=document.getElementById("qov"),tbEl=document.getElementById("turnbar"),tmEl=document.getElementById("turnmsg"),joinBtn=document.getElementById("joinbtn");
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const mmss=s=>`${Math.floor(s/60)}:${String(s%60).padStart(2,"0")}`;
+let wakeLock=null;
+async function keepAwake(){try{if(navigator.wakeLock&&!wakeLock){wakeLock=await navigator.wakeLock.request("screen");wakeLock.addEventListener("release",()=>wakeLock=null)}}catch(e){}}
+document.addEventListener("visibilitychange",()=>{if(document.visibilityState=="visible"&&NET.q&&NET.me&&(NET.myTurn||NET.q.list.some(p=>p.id==NET.me.id)))keepAwake()});
+let lastJoinTap=0;
+joinBtn.onclick=()=>{const me=NET.me,q=NET.q;if(!me||!q)return;const inLine=q.list.some(p=>p.id==me.id);
+ const now=performance.now();if(now-lastJoinTap<1200)return;lastJoinTap=now;   // the button changes under your finger: ignore a double tap
+ if(NET.myTurn||inLine)NET.send({t:"leave"});else{NET.send({t:"join"});keepAwake()}};
+function liveUI(){NET.update();const q=NET.q,me=NET.me,live=NET.live;
+ // queue overlay on the picture
+ let h;
+ if(NET.replaced)h=`<span class="off">PAUSED</span>Opened in another tab`;
+ else if(!NET.connected)h=`<span class="off">DEMO</span>Connecting to the lights…`;
+ else if(!live)h=`<span class="off">DEMO</span>Lights are offline right now`;
+ else{const rows=[`<span class="live">LIVE</span>${q.viewers} watching`];
+  rows.push(q.driver?`Now: <b class="${me&&q.driver.id==me.id?"me":""}">${esc(q.driver.name)}</b> · ${mmss(q.driver.left)}`:"Nobody driving - join!");
+  q.list.slice(0,6).forEach((p,i)=>rows.push(`${i+1}. <span class="${me&&p.id==me.id?"me":""}">${esc(p.name)}${me&&p.id==me.id?" (you)":""}</span>`));
+  if(q.total>6)rows.push(`+${q.total-6} more`);
+  h=rows.join("<br>")}
+ if(qovEl._h!==h){qovEl.innerHTML=h;qovEl._h=h}
+ // turn bar
+ let msg,btn=null,mine=false;
+ if(NET.replaced)msg="This page is open in another tab or window.";
+ else if(!live)msg=NET.connected?"The lights are offline - enjoy the demo, and check back during show hours.":"Connecting to the lights…";
+ else{const pos=me?q.list.findIndex(p=>p.id==me.id):-1,name=me?esc(me.name):"";
+  if(NET.myTurn){mine=true;msg=`<b>Your turn, ${name}!</b> ${mmss(q.driver.left)} left - try the pads`;btn="End turn"}
+  else if(pos>=0){const wait=(q.driver?q.driver.left:0)+pos*q.turn;msg=`You're <b>#${pos+1}</b> in line, ${name} · about ${mmss(wait)} - keep this page open`;btn="Leave line"}
+  else{msg=`You're <b>${name||"…"}</b>. ${q.total?q.total+" waiting":"No line"} - each turn is ${q.turn} seconds.`;btn="Join the line"}}
+ if(tmEl._h!==msg){tmEl.innerHTML=msg;tmEl._h=msg}
+ joinBtn.style.display=btn?"":"none";if(btn&&joinBtn.textContent!==btn)joinBtn.textContent=btn;
+ tbEl.classList.toggle("mine",mine);
+ // controls: locked unless it's your turn; house-only pads dimmed
+ document.getElementById("padcard").classList.toggle("locked",live&&!NET.myTurn);
+ document.getElementById("knobcard").classList.toggle("locked",live&&!NET.myTurn);
+ document.getElementById("padnote").style.display=live?"":"none";
+ padBox.querySelectorAll("button[data-pad]").forEach(b=>b.classList.toggle("na",live&&!ALLOWED_PADS.has(b.dataset.pad)));
+ kEls.forEach(([r,o,set,show],i)=>{const na=live&&!ALLOWED_KNOBS.has(i);r.disabled=na;
+  if(live&&!r.dataset.drag){const v=Math.round(knobPos(i));if(+r.value!==v)r.value=v;o.textContent=show()}});
+ ["pal","lay","ppal"].forEach(id=>document.getElementById(id).disabled=live);
+ ["music","energy","tap","bo","rel"].forEach(id=>document.getElementById(id).disabled=live)}
+
 // ===== status + loop =====
 const dotsEl=[...document.querySelectorAll("#dots i")],bpmEl=document.getElementById("bpm"),metEl=document.getElementById("meters"),fxEl=document.getElementById("fxlist");
 function status(){bpmEl.textContent=clock.bpm.toFixed(1);dotsEl.forEach((d,i)=>d.classList.toggle("b",Math.floor(clock.beat)%4==i));
@@ -454,8 +584,8 @@ function status(){bpmEl.textContent=clock.bpm.toFixed(1);dotsEl.forEach((d,i)=>d
 loadScene(3);applyPal("Red & Green","per window");applyPorchPal("Red & Green");
 let acc=0,prev=performance.now();
 (function loop(now){acc+=Math.min(.25,(now-prev)/1000);prev=now;let stepped=false;
- while(acc>=1/FPS){acc-=1/FPS;stepAudio(1/FPS);render();trees();stepped=true}
- if(stepped){if(hview.value=="photo")drawPhoto();else drawHouse();drawPorch();status()}requestAnimationFrame(loop)})(prev);
+ while(acc>=1/FPS){acc-=1/FPS;stepAudio(1/FPS);if(NET.live)applyLive();render();trees();if(NET.live)liveTrees();stepped=true}
+ if(stepped){if(hview.value=="photo")drawPhoto();else drawHouse();drawPorch();status();liveUI()}requestAnimationFrame(loop)})(prev);
 </script>
 </body>
 </html>
