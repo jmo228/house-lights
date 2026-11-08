@@ -497,6 +497,10 @@ const NET=(()=>{
    else if(m.t=="you"){N.me={id:m.id,name:m.name}}
    else if(m.t=="turn"){const tb=document.getElementById("turnbar");tb.classList.remove("flash");void tb.offsetWidth;tb.classList.add("flash");try{navigator.vibrate&&navigator.vibrate([200,100,200])}catch(x){}}
    else if(m.t=="turnover"){releaseHeld()}
+   else if(m.t=="kicked"){releaseHeld();N.notice={text:"The host took you out of the line. You can join again.",until:performance.now()+8000}}
+   else if(m.t=="blocked"){releaseHeld();const mins=Math.max(1,Math.min(1440,Math.floor(Number(m.minutes))||60));
+    N.blockedUntil=performance.now()+mins*60000;N.notice=null}
+   else if(m.t=="full"){N.notice={text:"The line is full right now (or your home already has 4 people in it). Try again soon.",until:performance.now()+8000}}
    else if(m.t=="replaced"){N.replaced=true;try{ws.close()}catch(x){}}
    update()};
   ws.onclose=()=>{N.connected=false;if(N.ws===ws)N.ws=null;update();later()};
@@ -563,7 +567,10 @@ function liveUI(){NET.update();const q=NET.q,me=NET.me,live=NET.live;
  if(NET.replaced)msg="This page is open in another tab or window.";
  else if(!live)msg=NET.connected?"The lights are offline - enjoy the demo, and check back during show hours.":"Connecting to the lights…";
  else{const pos=me?q.list.findIndex(p=>p.id==me.id):-1,name=me?esc(me.name):"";
-  if(NET.myTurn){mine=true;msg=`<b>Your turn, ${name}!</b> ${mmss(q.driver.left)} left - try the pads`;btn="End turn"}
+  const blockedLeft=NET.blockedUntil?Math.ceil((NET.blockedUntil-performance.now())/60000):0;
+  if(blockedLeft>0&&!NET.myTurn&&pos<0){msg=`You've been paused from the line by the host for about ${blockedLeft} min. You can still watch.`}
+  else if(NET.notice&&performance.now()<NET.notice.until&&!NET.myTurn&&pos<0){msg=esc(NET.notice.text);btn="Join the line"}
+  else if(NET.myTurn){mine=true;msg=`<b>Your turn, ${name}!</b> ${mmss(q.driver.left)} left - try the pads`;btn="End turn"}
   else if(pos>=0){const wait=(q.driver?num(q.driver.left):0)+pos*num(q.turn);msg=`You're <b>#${pos+1}</b> in line, ${name} · about ${mmss(wait)} - keep this page open`;btn="Leave line"}
   else{msg=`You're <b>${name||"…"}</b>. ${num(q.total)?num(q.total)+" waiting":"No line"} - each turn is ${num(q.turn)} seconds.`;btn="Join the line"}}
  if(tmEl._h!==msg){tmEl.innerHTML=msg;tmEl._h=msg}
